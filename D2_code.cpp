@@ -27,6 +27,18 @@ BLEService *pService;
 BLECharacteristic *pChar;
 BLEAdvertising *pAdvertising;
 
+BLEScan* pBLEScan;
+
+class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
+  void onResult(BLEAdvertisedDevice advertisedDevice) {
+    Serial.print("Device found: ");
+    Serial.print(advertisedDevice.getAddress().toString().c_str());
+    Serial.print(" RSSI: ");
+    Serial.println(advertisedDevice.getRSSI());
+  }
+};
+
+
 void setup() {
   Serial.begin(115200);
   
@@ -63,6 +75,13 @@ void setup() {
   pAdvertising->addServiceUUID(pService->getUUID());
   pAdvertising->start();
   Serial.println("BLE Advertising started");
+
+pBLEScan = BLEDevice::getScan();
+pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+pBLEScan->setActiveScan(true);
+pBLEScan->start(5, false);
+
+
 }
 
 void loop() {
