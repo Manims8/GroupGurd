@@ -8,6 +8,8 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
+#define NUM_PEERS (sizeof(peers)/sizeof(peers[0]))
+
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
@@ -15,8 +17,10 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 QMC5883LCompass compass;
 BLEScan* pBLEScan;
 
+
 const char* ssid = "Mani";
 const char* password = "12345678";
+WiFiServer server(12345);  // Use same port as others
 const float REF_RSSI = -54.0;
 const int PATH_LOSS = 3;
 const int sosPin = 14;
@@ -217,6 +221,7 @@ Peer peers[] = {
   {"D4", "00:4B:12:2F:95:7C"}  // optional
 };
 
+
 float calcDistance(float rssi) {
   return pow(10, (REF_RSSI - rssi) / (10.0 * PATH_LOSS));
 }
@@ -254,8 +259,57 @@ void alertSOS() {
   digitalWrite(motorPin, LOW);
 }
 
+void updatePeer(String mac, float rssi) {
+  for (int i = 0; i < NUM_PEERS; i++) {
+    if (peers[i].mac == mac) {
+      peers[i].rssi = rssi;
+      peers[i].distance = pow(10, (REF_RSSI - rssi) / (10 * PATH_LOSS));
+    }
+  }
+}
+
+class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
+  void onResult(BLEAdvertisedDevice advertisedDevice) {
+    String mac = advertisedDevice.getAddress().toString().c_str();
+    float rssi = advertisedDevice.getRSSI();
+
+    // Update peer data
+    updatePeer(mac, rssi);
+  }
+};
+
+void parsePacket(String data) {
+  data.trim();
+  Serial.println("Received: " + data);
+
+  if (data.startsWith("SOS")) {
+    Serial.println("🔴 SOS Alert: " + data);
+    // Trigger vibration, warning display, etc. if needed
+  } else {
+    // Handle normal data like "MAC,,HEADING"
+    int firstComma = data.indexOf(',');
+    int lastComma = data.lastIndexOf(',');
+    
+    if (firstComma > 0 && lastComma > firstComma) {
+      String mac = data.substring(0, firstComma);
+      String headingStr = data.substring(lastComma + 1);
+      int heading = headingStr.toInt();
+      
+      Serial.println("From: " + mac + " | Heading: " + String(heading));
+      // Add logic to update UI or peer list if needed
+    }
+  }
+}
+
+
 void setup() {
   Serial.begin(115200);
+
+  server.begin();
+  Serial.println("TCP Server started");
+
+  
+
   Wire.begin(21, 22);
   compass.init();
   pinMode(sosPin, INPUT_PULLUP);
@@ -270,16 +324,25 @@ void setup() {
   display.display();
   delay(2000);
 
+  pBLEScan = BLEDevice::getScan();
+  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  pBLEScan->setActiveScan(true);
+  pBLEScan->start(5, false);
+
+
   display.clearDisplay();
   display.setTextSize(1);
   display.setCursor(0, 0);
   display.println("Connecting WiFi...");
   display.display();
 
+
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500); Serial.print(".");
   }
+  server.begin();
+  Serial.println("TCP Server started");
 
   display.clearDisplay();
   display.setCursor(0, 0);
@@ -293,6 +356,24 @@ void setup() {
 }
 
 void loop() {
+  WiFiClient client = server.available();
+  if (client) {
+  while (client.connected()) {
+    while (client.available()) {
+      String data = client.readStringUntil('\n');
+      parsePacket(data);  // We'll define this next
+
+	  // Send heading back to client (for D3)
+	  compass.read();
+	  client.print(String(compass.getAzimuth()) + "\n");
+
+    }
+  }
+  client.stop();
+}
+
+
+
   for (int i = 0; i < sizeof(peers)/sizeof(peers[0]); i++) {
     BLEScanResults foundDevices = pBLEScan->start(1, false);
     peers[i].connected = false;
@@ -324,7 +405,7 @@ void loop() {
         if (peers[i].distance > threshold) alertOutOfRange(peers[i].name, peers[i].distance);
         break;
       }
-    }
+     }
 
     if (!peers[i].connected) {
       display.clearDisplay();
