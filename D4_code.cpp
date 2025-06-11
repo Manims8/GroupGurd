@@ -25,11 +25,12 @@ QMC5883LCompass compass;
 WiFiClient clientD1;
 WiFiClient clientD3;
 
-WiFiServer Server(12345); // D1's TCP port
-WiFiServer subServer(12346); // D3's TCP port
+const uint16_t Server = 12345;        // D1's TCP port
+const uint16_t subServer = 12346;     // D3's TCP port
 
 
-void connectToServer(WiFiClient &client, IPAddress ip, WiFiServer port) {
+// CORRECTED Code
+void connectToServer(WiFiClient &client, IPAddress ip, uint16_t port) {
   if (!client.connected()) {
     for (int attempts = 0; attempts < 3; attempts++) {
       Serial.print("Connecting to ");
@@ -118,8 +119,11 @@ void loop() {
   Serial.print(selfHeading);
   Serial.println("°");
   
-  // Connect to D1 and D3
-  connectToServer(clientD1, D1_IP, Server);
+  
+  // Connect to D1 on port 12345
+  connectToServer(clientD1, D1_IP, Server );
+
+  // Connect to D3 on port 12346
   connectToServer(clientD3, D3_IP, subServer);
   
   // Send heading data to both

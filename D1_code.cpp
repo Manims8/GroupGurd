@@ -355,69 +355,79 @@ void setup() {
   pBLEScan->setActiveScan(true);
 }
 
+// IMPROVED loop() function for D1
 void loop() {
+  // --- Part 1: Handle Incoming WiFi Data ---
   WiFiClient client = server.available();
   if (client) {
-  while (client.connected()) {
-    while (client.available()) {
-      String data = client.readStringUntil('\n');
-      parsePacket(data);  // We'll define this next
+    while (client.connected()) {
+      while (client.available()) {
+        String data = client.readStringUntil('\n');
+        parsePacket(data); // Process data from D2, D3, or D4
 
-	  // Send heading back to client (for D3)
-	  compass.read();
-	  client.print(String(compass.getAzimuth()) + "\n");
-
+        // Send this device's (D1's) heading back to the client
+        compass.read();
+        client.print(String(compass.getAzimuth()) + "\n");
+      }
     }
+    client.stop();
   }
-  client.stop();
-}
 
+  // --- Part 2: Collect Data from All Peers via BLE ---
+  // Perform a single, short BLE scan to find all nearby devices
+  BLEScanResults foundDevices = pBLEScan->start(1, false); 
 
+  // Iterate through the list of known peers
+  for (int i = 0; i < NUM_PEERS; i++) {
+    peers[i].connected = false; // Assume not connected until found
 
-  for (int i = 0; i < sizeof(peers)/sizeof(peers[0]); i++) {
-    BLEScanResults foundDevices = pBLEScan->start(1, false);
-    peers[i].connected = false;
-
+    // Check the scan results for a matching MAC address
     for (int j = 0; j < foundDevices.getCount(); j++) {
       BLEAdvertisedDevice d = foundDevices.getDevice(j);
-	  if (String(d.getAddress().toString().c_str()) == peers[i].mac) {
-		peers[i].rssi = d.getRSSI();
-		peers[i].distance = calcDistance(peers[i].rssi);
-		peers[i].heading = compass.getAzimuth();
-		peers[i].connected = true;
-
-        float selfHeading = compass.getAzimuth();
-        float diff = normalizeAngle(peers[i].heading - selfHeading);
-        const unsigned char* arrow = getArrowBitmap(diff);
-
-        display.clearDisplay();
-        display.setTextSize(1);
-        display.setCursor(0, 0);
-        display.println(peers[i].name);
-        display.setTextSize(2);
-        display.setCursor(0, 20);
-        display.print(peers[i].distance, 1);
-        display.print(" m");
-        display.drawBitmap(86, 18, arrow, 32, 30, SSD1306_WHITE);
-        display.display();
-
-        float threshold = (peers[i].name == "D1") ? 10.0 : (peers[i].name == "D2") ? 6.0 : 4.0;
-        if (peers[i].distance > threshold) alertOutOfRange(peers[i].name, peers[i].distance);
-        break;
+      if (String(d.getAddress().toString().c_str()) == peers[i].mac) {
+        peers[i].rssi = d.getRSSI();
+        peers[i].distance = calcDistance(peers[i].rssi);
+        peers[i].connected = true; 
+        // NOTE: The peer's heading is updated via WiFi in parsePacket()
+        break; // Found the peer, no need to check further
       }
-     }
+    }
+  }
 
-    if (!peers[i].connected) {
-      display.clearDisplay();
+  // --- Part 3: Update Display and Check Alerts for Each Peer ---
+  float selfHeading = compass.getAzimuth(); // Get self heading once
+
+  for (int i = 0; i < NUM_PEERS; i++) {
+    display.clearDisplay();
+    if (peers[i].connected) {
+      float diff = normalizeAngle(peers[i].heading - selfHeading);
+      const unsigned char* arrow = getArrowBitmap(diff);
+
+      display.setTextSize(1);
+      display.setCursor(0, 0);
+      display.println(peers[i].name);
+      display.setTextSize(2);
+      display.setCursor(0, 20);
+      display.print(peers[i].distance, 1);
+      display.print(" m");
+      display.drawBitmap(86, 18, arrow, 32, 30, SSD1306_WHITE);
+
+      // Check distance threshold for alerts
+      float threshold = (peers[i].name == "D2") ? 6.0 : 4.0; // Example thresholds
+      if (peers[i].distance > threshold) {
+        alertOutOfRange(peers[i].name, peers[i].distance);
+      }
+    } else {
+      // Display "not found" message if peer is not connected
       display.setCursor(0, 0);
       display.println(peers[i].name + " not found");
-      display.display();
     }
+    display.display();
+    delay(1500); // Delay between showing each peer's status
+  }
 
-    if (digitalRead(sosPin) == LOW) {
-      alertSOS();
-    }
-
-    delay(2000);
+  // --- Part 4: Check for SOS Button Press ---
+  if (digitalRead(sosPin) == LOW) {
+    alertSOS();
   }
 }
