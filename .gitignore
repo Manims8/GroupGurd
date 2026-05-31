@@ -1,0 +1,30 @@
+# Arduino
+*.hex
+*.elf
+*.bin
+*.map
+*.eep
+*.lst
+*.sym
+*.d
+*.o
+*.a
+build/
+.build/
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+libdeps/
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
