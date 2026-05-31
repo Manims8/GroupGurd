@@ -25,7 +25,7 @@ Display devices use a split-screen peer box layout:
 | Device | Left | Right |
 | --- | --- | --- |
 | D1 page 1 | D2 | D3 |
-| D1 page 2 | D4 | D1 self |
+| D1 page 2 | D4 full-width | - |
 | D3 | D1 | D4 |
 | D4 | D3 | D4 self |
 
